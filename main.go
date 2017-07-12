@@ -2,10 +2,10 @@ package main
 
 import (
 	"github.com/hashicorp/terraform/plugin"
-	"github.com/terraform-providers/terraform-provider-external/external"
+	"github.com/mproffitt/terraform-provider-esscsvhost/esscsvhost"
 )
 
 func main() {
 	plugin.Serve(&plugin.ServeOpts{
-		ProviderFunc: external.Provider})
+		ProviderFunc: esscsvhost.Provider})
 }

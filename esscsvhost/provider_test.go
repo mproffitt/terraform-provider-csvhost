@@ -1,4 +1,4 @@
-package external
+package esscsvhost
 
 import (
 	"testing"
@@ -14,5 +14,5 @@ func TestProvider(t *testing.T) {
 }
 
 var testProviders = map[string]terraform.ResourceProvider{
-	"external": Provider(),
+	"esscsvhost": Provider(),
 }
