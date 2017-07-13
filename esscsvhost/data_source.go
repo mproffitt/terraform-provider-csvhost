@@ -73,6 +73,10 @@ func dataSource() *schema.Resource {
 							Type:     schema.TypeString,
 							Computed: true,
 						},
+						"template": &schema.Schema{
+							Type:     schema.TypeString,
+							Computed: true,
+						},
 					},
 				},
 			},
@@ -81,12 +85,11 @@ func dataSource() *schema.Resource {
 }
 
 func dataSourceRead(d *schema.ResourceData, meta interface{}) error {
-
 	csvfile := d.Get("csvfile").(string)
-	//query := d.Get("query").(map[string]interface{})
+	query := d.Get("query").(map[string]interface{})
 	data, err := ioutil.ReadFile(csvfile)
 	reader := csv.NewReader(strings.NewReader(string(data)))
-	columns := []string{"hostname", "address", "gateway", "subnet", "cpu", "memory", "vapp", "network"}
+	columns := []string{"hostname", "address", "gateway", "subnet", "cpu", "memory", "vapp", "network", "template"}
 
 	rows := make([]map[string]interface{}, 0)
 	for {
@@ -97,7 +100,16 @@ func dataSourceRead(d *schema.ResourceData, meta interface{}) error {
 		if err != nil {
 			return fmt.Errorf("Failed to read CSV file %q: %s", csvfile, err)
 		}
-
+		// skip the header row if provided
+		var header = true
+		for i, v := range record {
+			if v != columns[i] {
+				header = false
+			}
+		}
+		if header {
+			continue
+		}
 		row := make(map[string]interface{})
 		for i, k := range columns {
 			row[k], err = strconv.Atoi(record[i])
@@ -109,7 +121,6 @@ func dataSourceRead(d *schema.ResourceData, meta interface{}) error {
 		rows = append(rows, row)
 	}
 	resultJson, err := json.MarshalIndent(&rows, "", "    ")
-	err = ioutil.WriteFile("bob.json", resultJson, 0644)
 	check(err)
 
 	result := make([]map[string]interface{}, 0)
@@ -117,15 +128,33 @@ func dataSourceRead(d *schema.ResourceData, meta interface{}) error {
 	if err != nil {
 		return fmt.Errorf("command %q produced invalid JSON: %s", csvfile, err)
 	}
-	log.Println("======================= %#v =======================", csvfile)
+
+	// poor mans filter to JSON array
+	filtered := make([]map[string]interface{}, 0)
+	if query != nil {
+		for _, item := range result {
+			var add = true
+			for q, v := range query {
+				log.Println(item[q])
+				log.Println(v)
+				endsWith := strings.HasSuffix(item[q].(string), v.(string))
+				if item[q] != v && !endsWith {
+					add = false
+				}
+			}
+			if add {
+				filtered = append(filtered, item)
+			}
+		}
+	}
+
 	log.Println("=============>>>>>>>>>>>>>>>>>")
-	for i := range result {
-		log.Println(result[i])
+	for i := range filtered {
+		log.Println(filtered[i])
 	}
 	log.Println("<<<<<<<<<<<<<=================")
-	log.Println("===================================================")
 
-	d.Set("result", &result)
+	d.Set("result", &filtered)
 	d.SetId("-")
 	return nil
 }
