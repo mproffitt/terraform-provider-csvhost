@@ -10,6 +10,7 @@ import (
 	"log"
 	"strconv"
 	"strings"
+	"time"
 )
 
 func check(e error) {
@@ -77,6 +78,14 @@ func dataSource() *schema.Resource {
 							Type:     schema.TypeString,
 							Computed: true,
 						},
+						"expires": &schema.Schema{
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+						"power": &schema.Schema{
+							Type:     schema.TypeString,
+							Computed: true,
+						},
 					},
 				},
 			},
@@ -89,7 +98,7 @@ func dataSourceRead(d *schema.ResourceData, meta interface{}) error {
 	query := d.Get("query").(map[string]interface{})
 	data, err := ioutil.ReadFile(csvfile)
 	reader := csv.NewReader(strings.NewReader(string(data)))
-	columns := []string{"hostname", "address", "gateway", "subnet", "cpu", "memory", "vapp", "network", "template"}
+	columns := []string{"hostname", "address", "gateway", "subnet", "cpu", "memory", "vapp", "network", "template", "expires"}
 
 	rows := make([]map[string]interface{}, 0)
 	for {
@@ -142,6 +151,35 @@ func dataSourceRead(d *schema.ResourceData, meta interface{}) error {
 					add = false
 				}
 			}
+
+			if item["expires"] == "" || item["expires"] == nil {
+				// set date to a year from now...
+				y, m, d := time.Now().Date()
+				item["expires"] = time.Date(y+1, m, d, 0, 0, 0, 0, time.Now().Location()).Format("2006-01-02")
+			}
+			item["power"] = "ignored" // default to ignored - we don't care about existing state as this could interfere
+			// with maintenance of existing machines.
+			date, err := time.Parse("2006-01-02", item["expires"].(string))
+			if err != nil {
+				// try formatting the date in dd/mm/YYYY format
+				// and yes, this is because of M$ excel f***ing with the format
+				date, err = time.Parse("02/01/2006", item["expires"].(string))
+				if err != nil {
+					return fmt.Errorf("Invalid date format for expires. Format should be 'YYYY-MM-DD'")
+				}
+			}
+			year, month, day := time.Now().Date()
+			delta := time.Date(year, month, day, 0, 0, 0, 0, time.Now().Location()).Sub(date).Hours()
+			if delta > 0 {
+				item["power"] = "poweredOff"
+			}
+
+			// don't add any machines to the list that are > 7 days past expiry
+			// these should already have been moved in the state file by python.
+			if delta >= 168 { // 7 * 24 = 7 days
+				add = false
+			}
+
 			if add {
 				filtered = append(filtered, item)
 			}
