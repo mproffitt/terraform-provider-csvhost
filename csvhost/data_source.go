@@ -13,6 +13,8 @@ import (
 	"time"
 )
 
+var MAX_DISKS = 4
+
 func check(e error) {
 	if e != nil {
 		panic(e)
@@ -35,6 +37,11 @@ func dataSource() *schema.Resource {
 				Elem: &schema.Schema{
 					Type: schema.TypeString,
 				},
+			},
+
+			"clusterPrefix": &schema.Schema{
+				Type:     schema.TypeString,
+				Required: true,
 			},
 
 			"result": &schema.Schema{
@@ -86,6 +93,46 @@ func dataSource() *schema.Resource {
 							Type:     schema.TypeString,
 							Computed: true,
 						},
+						"disk1": &schema.Schema{
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+						"disk1lun": &schema.Schema{
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+						"disk2": &schema.Schema{
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+						"disk2lun": &schema.Schema{
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+						"disk3": &schema.Schema{
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+						"disk3lun": &schema.Schema{
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+						"disk4": &schema.Schema{
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+						"disk4lun": &schema.Schema{
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+						"disk5": &schema.Schema{
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+						"disk5lun": &schema.Schema{
+							Type:     schema.TypeString,
+							Computed: true,
+						},
 					},
 				},
 			},
@@ -96,6 +143,8 @@ func dataSource() *schema.Resource {
 func dataSourceRead(d *schema.ResourceData, meta interface{}) error {
 	csvfile := d.Get("csvfile").(string)
 	query := d.Get("query").(map[string]interface{})
+	clusterPrefix := d.Get("clusterPrefix").(string)
+
 	data, err := ioutil.ReadFile(csvfile)
 	reader := csv.NewReader(strings.NewReader(string(data)))
 	columns := []string{"hostname", "address", "gateway", "subnet", "cpu", "memory", "vapp", "network", "template", "expires"}
@@ -140,12 +189,12 @@ func dataSourceRead(d *schema.ResourceData, meta interface{}) error {
 
 	// poor mans filter to JSON array
 	filtered := make([]map[string]interface{}, 0)
+	log.Println("beginning filter search....")
 	if query != nil {
 		for _, item := range result {
 			var add = true
 			for q, v := range query {
-				log.Println(item[q])
-				log.Println(v)
+				log.Printf("item[%v] == %v\n", item[q].(string), v.(string))
 				endsWith := strings.HasSuffix(item[q].(string), v.(string))
 				if item[q] != v && !endsWith {
 					add = false
@@ -181,12 +230,46 @@ func dataSourceRead(d *schema.ResourceData, meta interface{}) error {
 			}
 
 			if add {
+				log.Printf("============= RETRIEVING DISKS FOR %v >>>>>>>>>>>>>>>>>\n", item["hostname"].(string))
+				lun := randomDS(clusterPrefix)
+				vmid, err := getVm(item["hostname"].(string))
+				if err != nil {
+					panic(err.Error())
+				}
+
+				if vmid != "" {
+					details := getVmDetails(vmid)
+					disks := getDisks(details)
+					for index, value := range disks {
+						if index >= MAX_DISKS {
+							break
+						}
+						item[fmt.Sprintf("disk%v", (index+1))] = getImage(strings.Split(value, " ")[1])
+						item[fmt.Sprintf("disk%vlun", (index+1))] = getLun(strings.Split(value, " ")[0])
+					}
+					log.Printf("Found %d disks\n", len(disks))
+				} else {
+					for i := 0; i <= MAX_DISKS; i++ {
+						diskName := fmt.Sprintf("%v_%d", item["hostname"], (i + 1))
+						if i == 0 {
+							diskName = item["hostname"].(string)
+						}
+						item[fmt.Sprintf("disk%v", (i+1))] = diskName
+						item[fmt.Sprintf("disk%vlun", (i+1))] = lun
+					}
+				}
+
 				filtered = append(filtered, item)
+				log.Printf(
+					"============= (%d hosts for vapp %v - size %v) >>>>>>>>>>>>>>>>>\n",
+					len(filtered),
+					item["vapp"],
+					item["template"])
 			}
 		}
 	}
 
-	log.Println("=============>>>>>>>>>>>>>>>>>")
+	log.Println("============= FILTERED >>>>>>>>>>>>>>>>>")
 	for i := range filtered {
 		log.Println(filtered[i])
 	}
