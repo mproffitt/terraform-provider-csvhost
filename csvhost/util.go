@@ -1,4 +1,4 @@
-package esscsvhost
+package csvhost
 
 import (
 	"fmt"

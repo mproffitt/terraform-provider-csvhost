@@ -1,4 +1,4 @@
-package esscsvhost
+package csvhost
 
 import (
 	"github.com/hashicorp/terraform/helper/schema"
@@ -8,7 +8,7 @@ import (
 func Provider() terraform.ResourceProvider {
 	return &schema.Provider{
 		DataSourcesMap: map[string]*schema.Resource{
-			"esscsvhost": dataSource(),
+			"csvhost": dataSource(),
 		},
 		ResourcesMap: map[string]*schema.Resource{},
 	}
